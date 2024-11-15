@@ -1,0 +1,2 @@
+# Kartusha
+Game optimizer
