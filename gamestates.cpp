@@ -1,3 +1,4 @@
+
 #include <iostream>
 #include <list>
 #include <string>
@@ -9,7 +10,8 @@
 using namespace std;
 
 
-void prune(shared_ptr<GameState>);
+
+
 
 
 struct GameState : enable_shared_from_this<GameState> {
@@ -19,10 +21,10 @@ struct GameState : enable_shared_from_this<GameState> {
   bool end;
   bool childrenGenerated;
   weak_ptr<GameState> parent; // weak_ptr to prevent cyclic reference
-  vector<shared_ptr<GameState>> children;
+  vector<shared_ptr<GameState> > children;
 
 
-  GameState(int board[5], int turnNum, shared_ptr<GameState> parent, const vector<shared_ptr<GameState>>& winStates)
+  GameState(int board[5], int turnNum, shared_ptr<GameState> parent, const vector<shared_ptr<GameState> >& winStates)
       : turnNum(turnNum), parent(parent), childrenGenerated(false), end(false) {
       for (int i = 0; i < 5; ++i) {
           this->board[i] = board[i];
@@ -31,7 +33,7 @@ struct GameState : enable_shared_from_this<GameState> {
   }
 
 
-bool isEnd(const vector<shared_ptr<GameState> >& winStates) {
+   bool isEnd(const vector<shared_ptr<GameState> >& winStates) {
       for (const auto& winState : winStates) {
           bool match = true;
           for (int j = 0; j < 5; j++) {
@@ -50,11 +52,49 @@ bool isEnd(const vector<shared_ptr<GameState> >& winStates) {
   }
 
 
-  void SpawnChildren(const vector<shared_ptr<GameState>>& winStates) {
-      if (childrenGenerated) return;
+   shared_ptr<GameState> isEnd(const vector<shared_ptr<GameState> >& winStates,bool returnPointer) {
+      for (const auto& winState : winStates) {
+          bool match = true;
+          shared_ptr<GameState> temp;
+          for (int j = 0; j < 5; j++) {
+              if (this->board[j] != winState->board[j]) {
+                  match = false;
+                  temp = winState;
+                  break;
+              }
+          }
+          if (match) {
+              end = true;
+              return temp;
+          }
+      }
+      end = false;
+      return nullptr;
+  }
 
 
+  void SpawnChildren(const vector<shared_ptr<GameState> >& winStates) {
       int updatedBoard[5];
+      int winStreak;
+      int lookWin;
+      bool allEndgameChildren = true;
+      shared_ptr<GameState> returnedNode;
+      shared_ptr<GameState> tempChild;
+
+
+
+
+      // handles revisit
+      if (childrenGenerated){
+           if(win != 0)return;
+           winStreak = children.at(0).get()->win;
+           for (int i = 0; i < children.size(); i++){
+               lookWin = children.at(i).get()->win;
+               if (lookWin == 0 )return;
+               if (lookWin != winStreak)return;
+           }
+           winStates.push_back(this);
+      }
 
 
       if (!this->isEnd(winStates)) {
@@ -62,9 +102,17 @@ bool isEnd(const vector<shared_ptr<GameState> >& winStates) {
               for (int k = 0; k < board[j]; k++) {
                   for (int i = 0; i < 5; ++i) {
                       updatedBoard[i] = this->board[i];
-                  }
-                  updatedBoard[j] = k;
-                  children.push_back(make_shared<GameState>(updatedBoard, turnNum + 1, shared_from_this(), winStates));
+                   }
+                   updatedBoard[j] = k;
+                   tempChild = make_shared<GameState>(updatedBoard, turnNum + 1, shared_from_this(), winStates);
+                   returnedNode = tempChild.get()->isEnd(winStates,true);
+                   if (returnedNode != nullptr)// Check if the new child is an endgame
+                   {
+                       children.push_back(returnedNode);
+                   } else
+                   {
+                       children.push_back(tempChild);
+                   }
               }
           }
       }
@@ -93,6 +141,9 @@ bool isEnd(const vector<shared_ptr<GameState> >& winStates) {
 };
 
 
+void prune(shared_ptr<GameState>);
+
+
 int main() {
   cout << "\n----START----\n";
   fstream file("gamestates.txt", ios::out);
@@ -106,7 +157,7 @@ int main() {
   int basicWin[5] = {0, 0, 0, 0, 0};
   int nodeCount = 0;
   float progress = 0.0;
-  vector<shared_ptr<GameState>> winStates;
+  vector<shared_ptr<GameState> > winStates;
   auto baseWin = make_shared<GameState>(basicWin, 0, nullptr, winStates);
   winStates.push_back(baseWin);
 
@@ -118,19 +169,33 @@ int main() {
   int rootChildSize = root->children.size();
 
 
-  vector<shared_ptr<GameState>> stack;
+  vector<shared_ptr<GameState> > stack;
   stack.push_back(root);
 
 
   while (!stack.empty()) {
       auto current = stack.back();
       stack.pop_back();
+ 
+      // PROGRESS BAR
+       if (auto parent = current->parent.lock(); parent && parent == root) {
+            ++progress;
+       }
+       // Print progress bar every 100 nodes
+       if (nodeCount % 100 == 0) {
+           float progressPercent = (progress / static_cast<float>(rootChildSize)) * 100;
+           int barWidth = 50; // Width of the progress bar
+           int pos = static_cast<int>(barWidth * progressPercent / 100);
 
 
-      if (auto parent = current->parent.lock(); parent && parent == root) {
-          cout << "\nProgress: " << (progress / rootChildSize) * 100 << "%";
-          ++progress;
-      }
+           cout << "\nProgress: ["; // Start progress bar
+           for (int i = 0; i < barWidth; ++i) {
+               if (i < pos) cout << "=";
+               else cout << " ";
+           }
+           cout << "] " << progressPercent << "%, turn:"<< current->turnNum <<" Nodes Processed: " << nodeCount;
+       }
+      
 
 
       if (!current->isEnd(winStates)) {
