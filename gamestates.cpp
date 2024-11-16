@@ -29,6 +29,8 @@ struct GameBoard
     GameBoard(int inBoard[5],bool inIsEven){
         //coppy in board
         for (int i = 0; i < 5; i++){board[i] = inBoard[i];}
+
+        sort(board, board + 5);//sort board
         //handles key generation
         key = GetKey(inBoard,inIsEven);
         conjugateKey = GetKey(inBoard,!inIsEven);
@@ -68,8 +70,6 @@ struct GameBoard
         isEnd = ((key == WIN_KEY_EVEN) || (key == WIN_KEY_ODD));  
     }
 
-
-
     private:
     
     // Function to convert a decimal number to base 11 
@@ -89,12 +89,12 @@ struct GameBoard
         return base11;
     }
 
-
     int GetKey(int board[5],bool isEven){
         //convert the board values into digits of a 6 digit long int
         int a = (board[0]*100000)+(board[1]*10000)+(board[2]*1000)+(board[3]*100)+(board[4]*10)+isEven;
         //convert to base 11
         a = convertToBase11(a);
+        if(key >= 84830){cout<<"\n\n\n\n\n\n\n\n KEY TOO BIG " << key << "  "; for (size_t i = 0; i < 5; i++){cout << board[i] << ",";}};
         return a;
     };
 
@@ -119,7 +119,6 @@ class GameState: public enable_shared_from_this<GameState>{
     
     bool isEven;
     int  Win; //0 undecided , 1 P1 , -1 P2
-    long long progressData[2]{0,0}; // [0] = uniques found; [1] = total nodes processed
     GameBoard board;
     vector<shared_ptr<GameState>> children;
     vector<shared_ptr<GameState>> parents;
@@ -127,30 +126,16 @@ class GameState: public enable_shared_from_this<GameState>{
 
 
     public: // public
+    
     // constructors
-    
-    // use in SpawnChildren
-    GameState(GameBoard board, bool isEven, array<shared_ptr<GameState>, 84829>& uniqueNodes, 
-            shared_ptr<GameState> parent, long long progressData[2])
-        : board(board), isEven(isEven) {
-        this->progressData[0] = progressData[0];
-        this->progressData[1] = ++progressData[1];
-        if (parent) {
-            this->parents.push_back(parent);
-        }
+    GameState(GameBoard board, bool isEven): board(board), isEven(isEven) {}
+
+    void Initialize(array<shared_ptr<GameState>, 84829>& uniqueNodes,long long progressData[2] ) {
         if (!board.isEnd) {
-            SpawnChildren(this->board, !isEven, uniqueNodes);
+            SpawnChildren(this->board, !isEven, uniqueNodes, progressData);
         }
     }
 
-    GameState(GameBoard board, bool isEven, array<shared_ptr<GameState>, 84829>& uniqueNodes)
-        : board(board), isEven(isEven) {
-        if (!board.isEnd) {
-            SpawnChildren(this->board, !isEven, uniqueNodes);
-        }
-    }
-
-    
     GameState& operator=(const GameState& other) {
         if(children.size() == 0){return *this;}// Base case:  return *this to allow chained assignments
          this->board  = other.board;
@@ -163,9 +148,9 @@ class GameState: public enable_shared_from_this<GameState>{
         return *this;
     };
 
-    void ProgressVisual(){
-        if (parents.size() != 0){cout << "\x1b[1F\x1b[2K";} // clear the last progress bar if not the root
-        int progressinterval = 500;
+    void ProgressVisual(long long progressData[2]){
+         
+        int progressinterval = 1000;
         int numUniquesDescovered = progressData[0];
         long long totalNodesProcessed = progressData[1];
         int barWidth = 75;
@@ -173,14 +158,14 @@ class GameState: public enable_shared_from_this<GameState>{
 
             // Periodic progress update every progressInterval nodes
         if (totalNodesProcessed % progressinterval == 0) {
-            
+            if (parents.size() != 0){cout << "\x1b[1F\x1b[2K";} // clear the last progress bar if not the root
             double progressPercent = (static_cast<double>(totalNodesProcessed) / 1010101000) * 100;
             double progressPercent2 = (static_cast<double>(numUniquesDescovered) / 262) * 100;
             int pos = static_cast<int>(barWidth * progressPercent / 100);
             int pos2 = static_cast<int>(barWidth2 * progressPercent2 / 100);
 
             // Display the progress bar
-            cout << "Progress: [";
+            cout << "Progress:  [";
             for (int i = 0; i < barWidth; ++i) {
                 if (i < pos) cout << "=";
                 else cout << " ";
@@ -199,106 +184,81 @@ class GameState: public enable_shared_from_this<GameState>{
         return;
     };
 
-    void SpawnChildren(GameBoard board, bool isEven, std::array<std::shared_ptr<GameState>, 84829>& uniqueNodes) {
-        ProgressVisual();
-        int proposedBoard[5];
+    void SpawnChildren(GameBoard board, bool isEven, array<shared_ptr<GameState>, 84829>& uniqueNodes, long long progressData[2] ) {
+        
+    ProgressVisual(progressData);
+    int proposedBoard[5];
 
-        if (board.isEnd) {
-            for (int j = 0; j < 5; j++) {
-                for (int k = 0; k < board[j]; k++) {
-                    board.CopyBoardTo(proposedBoard);
-                    proposedBoard[j] = k;
+    if (!board.isEnd) {
+        progressData[1]++;
+        for (int j = 0; j < 5; j++) {
+            for (int k = 0; k < board[j]; k++) {
+                board.CopyBoardTo(proposedBoard);
+                proposedBoard[j] = k;
 
-                    GameBoard child(proposedBoard, isEven);
-                    std::shared_ptr<GameState> newborn;
+                GameBoard child(proposedBoard, isEven);
+                shared_ptr<GameState> newborn;
 
-                    switch (IsUnique(child, uniqueNodes)) {
-                        case 0: // Not found in unique list
-                            newborn = std::make_shared<GameState>(child, isEven, uniqueNodes, nullptr, progressData);
-                            newborn->parents.push_back(shared_from_this());
-                            children.push_back(newborn);
-                            uniqueNodes[child.key] = newborn;
-                            progressData[0]++;
-                            break;
+                switch (IsUnique(child, uniqueNodes)) {
+                    case 0: // Not found in unique list
+                        newborn = make_shared<GameState>(child, isEven);
+                        children.push_back(newborn);
+                        uniqueNodes[child.key] = newborn;
+                        progressData[0]++;
+                        break;
 
-                        case 1: // Already has a conjugate
-                            newborn = uniqueNodes[child.conjugateKey];
-                            newborn->isEven = !isEven;
-                            newborn->UpdateKeys();
-                            newborn->parents.push_back(shared_from_this());
-                            children.push_back(newborn);
-                            break;
+                    case 1: // Already has a conjugate
+                        newborn = uniqueNodes[child.conjugateKey];
+                        newborn->isEven = !isEven;
+                        newborn->UpdateKeys();
+                        children.push_back(newborn);
+                        break;
 
-                        case 2: // Has been seen
-                            uniqueNodes[child.key]->parents.push_back(shared_from_this());
-                            children.push_back(uniqueNodes[child.key]);
-                            break;
+                    case 2: // Has been seen
+                        newborn = uniqueNodes[child.key];
+                        children.push_back(newborn);
+                        break;
+                    }
+
+                    if (newborn) {
+                        newborn->parents.push_back(shared_from_this());
+                        // Recursively call SpawnChildren on the new child to expand the tree
+                        
+                        newborn->SpawnChildren(newborn->board, !isEven, uniqueNodes,progressData);
                     }
                 }
             }
         }
     }
 
-
-
-    int IsUnique(GameBoard board, const std::array<std::shared_ptr<GameState>, 84829>& uniqueNodes) {
+    int IsUnique(GameBoard board, const array<shared_ptr<GameState>, 84829>& uniqueNodes) {
         if (uniqueNodes[board.key] != nullptr) return 2;
         if (uniqueNodes[board.conjugateKey] != nullptr) return 1;
         return 0;
     }
 
-
     void UpdateKeys(){ // used to update the keys after copying over data
         this->board.UpdateKeys(isEven);return;
     }
 
-    // void Delete(){
-    //     // recursive step
-    //     for (size_t i = 0; i < this->children.size(); i++){this->children.at(i)->Delete();}// if children loop though and delete
-    //     // base case
-    //     if (this->board.isEnd||(this->children.size() == 0)){// if it has no children or if its an end state
-    //         for (size_t i = 0; i < this->parents.size(); i++){//for each parent
-    //             for (size_t j = 0; j < this->parents.at(i)->children.size(); j++){
-    //                 //find this element in parents' children vector 
-    //                 if (this->parents.at(i)->children.at(j)->board.key == this->board.key){
-    //                     delete this->parents.at(i)->children[j];// delete self
-    //                     this->parents.at(i)->children.erase(this->parents.at(i)->children.begin() + j);// erase from vector
-    //         }}}
-    //         // clear out parents
-    //         for (size_t i = 0; i < this->parents.size(); i++)
-    //         {
-    //             delete this->parents[i];
-    //         }
-    //         this->parents.clear();
-    //         return;
-    //     };
-    // }
-
-    // ~GameState(){//release the memory!!
-    //     Delete();
-    // }
 };
 
 
+
 int main() {
-    std::cout << "\n_____-(Start)-_____\n";
+    cout << "\n_____-(Start)-_____\n";
 
-    std::array<std::shared_ptr<GameState>, 84829> UniqueNodes{nullptr};
-    std::shared_ptr<GameState> root;
-
+     array<shared_ptr<GameState>, 84829> UniqueNodes{nullptr};
+    long long progressData[2]{0,0}; // [0] = uniques found; [1] = total nodes processed
     int startingBoard[5]{1, 2, 3, 4, 5};
     GameBoard rootBoard(startingBoard, true);
-    root = std::make_shared<GameState>(rootBoard, true, UniqueNodes);
 
-    std::cout << "\n------_(END)_------\n";
+    // Create root node
+    shared_ptr<GameState> root = make_shared<GameState>(rootBoard, true);
+
+    // Initialize children after construction
+    root->Initialize(UniqueNodes,progressData);
+
+    cout << "\n------_(END)_------\n";
     return 0;
 }
-
-
-
-
-
-
-
-
-
