@@ -1,4 +1,3 @@
-
 #include <iostream>
 #include <list>
 #include <string>
@@ -12,11 +11,9 @@ using namespace std;
 
 
 
-
-
 struct GameState : enable_shared_from_this<GameState> {
   int board[5];
-  int turnNum;
+  bool isEvenTurn;
   int win;
   bool end;
   bool childrenGenerated;
@@ -24,8 +21,8 @@ struct GameState : enable_shared_from_this<GameState> {
   vector<shared_ptr<GameState> > children;
 
 
-  GameState(int board[5], int turnNum, shared_ptr<GameState> parent, const vector<shared_ptr<GameState> >& winStates)
-      : turnNum(turnNum), parent(parent), childrenGenerated(false), end(false) {
+  GameState(int board[5], bool IsEvenTurn, shared_ptr<GameState> parent,vector<shared_ptr<GameState> >& winStates)
+      : isEvenTurn(isEvenTurn), parent(parent), childrenGenerated(false), end(false) {
       for (int i = 0; i < 5; ++i) {
           this->board[i] = board[i];
       }
@@ -33,7 +30,7 @@ struct GameState : enable_shared_from_this<GameState> {
   }
 
 
-   bool isEnd(const vector<shared_ptr<GameState> >& winStates) {
+   bool isEnd(vector<shared_ptr<GameState> >& winStates) {
       for (const auto& winState : winStates) {
           bool match = true;
           for (int j = 0; j < 5; j++) {
@@ -52,7 +49,7 @@ struct GameState : enable_shared_from_this<GameState> {
   }
 
 
-   shared_ptr<GameState> isEnd(const vector<shared_ptr<GameState> >& winStates,bool returnPointer) {
+   shared_ptr<GameState> isEnd(vector<shared_ptr<GameState> >& winStates,bool returnPointer) {
       for (const auto& winState : winStates) {
           bool match = true;
           shared_ptr<GameState> temp;
@@ -73,7 +70,19 @@ struct GameState : enable_shared_from_this<GameState> {
   }
 
 
-  void SpawnChildren(const vector<shared_ptr<GameState> >& winStates) {
+   shared_ptr<GameState>  copyNode(shared_ptr<GameState> toCopy,vector<shared_ptr<GameState> >& winStates){
+       int copiedBoard [5];
+       for (int i = 0; i < 5; ++i) {
+           copiedBoard[i] = this->board[i];
+        }
+       shared_ptr<GameState> copy = make_shared<GameState>(copiedBoard,!isEvenTurn, shared_from_this(), winStates); ;
+       return copy;
+
+
+   };
+
+
+  void SpawnChildren(vector<shared_ptr<GameState> >& winStates) {
       int updatedBoard[5];
       int winStreak;
       int lookWin;
@@ -93,7 +102,7 @@ struct GameState : enable_shared_from_this<GameState> {
                if (lookWin == 0 )return;
                if (lookWin != winStreak)return;
            }
-           winStates.push_back(this);
+           winStates.push_back(copyNode(this,winStates));
       }
 
 
@@ -104,8 +113,8 @@ struct GameState : enable_shared_from_this<GameState> {
                       updatedBoard[i] = this->board[i];
                    }
                    updatedBoard[j] = k;
-                   tempChild = make_shared<GameState>(updatedBoard, turnNum + 1, shared_from_this(), winStates);
-                   returnedNode = tempChild.get()->isEnd(winStates,true);
+                   tempChild = make_shared<GameState>(updatedBoard, isEvenTurn, shared_from_this(), winStates);
+                   returnedNode = copyNode(tempChild.get()->isEnd(winStates,true),winStates);
                    if (returnedNode != nullptr)// Check if the new child is an endgame
                    {
                        children.push_back(returnedNode);
@@ -120,9 +129,9 @@ struct GameState : enable_shared_from_this<GameState> {
   }
 
 
-   void getWin(const vector<shared_ptr<GameState> >& winStates) {
+   void getWin(vector<shared_ptr<GameState> >& winStates) {
       if (isEnd(winStates)) {
-          win = (turnNum % 2 == 0) ? -1 : 1; // Assign +1 for odd turn (winning), -1 for even turn (losing)
+          win = (isEvenTurn) ? -1 : 1; // Assign +1 for odd turn (winning), -1 for even turn (losing)
       } else {
           win = 0; // Non-terminal state
       }
@@ -139,6 +148,8 @@ struct GameState : enable_shared_from_this<GameState> {
       }
   }
 };
+
+
 
 
 void prune(shared_ptr<GameState>);
@@ -193,7 +204,7 @@ int main() {
                if (i < pos) cout << "=";
                else cout << " ";
            }
-           cout << "] " << progressPercent << "%, turn:"<< current->turnNum <<" Nodes Processed: " << nodeCount;
+           cout << "] " << progressPercent << "%, Nodes Processed: " << nodeCount;
        }
       
 
