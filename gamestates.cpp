@@ -1,43 +1,269 @@
 #include <iostream>
 #include <vector>
-#include <memory>
 #include <algorithm>
 #include <array>
 #include <sstream>
 #include <iomanip>
 #include <fstream>
-#include <algorithm>
-#include <unordered_map>
+
 
 
 using namespace std;
 
 
-struct GameState;
+
+ const int WIN_KEY_ODD = 0;
+ const int WIN_KEY_EVEN = 1;
 
 
 
+struct GameBoard
+{
+    int  board[5];
+    int  key;
+    int  conjugateKey;
+    bool isEnd;
+
+    GameBoard() : board{0, 0, 0, 0, 0}, key(0), isEnd(false) {};
+
+    GameBoard(int inBoard[5],bool inIsEven){
+        //coppy in board
+        for (int i = 0; i < 5; i++){board[i] = inBoard[i];}
+        //handles key generation
+        key = GetKey(inBoard,inIsEven);
+        conjugateKey = GetKey(inBoard,!inIsEven);
+        // cheecks if its a terminal gamestate
+        isEnd = ((key == WIN_KEY_EVEN) || (key == WIN_KEY_ODD));   
+    }
+
+    GameBoard& operator=(const GameBoard& other) {
+        CopyOver(other);
+        return *this; // Return *this to allow chained assignments
+    }
+
+    GameBoard& operator=(const GameBoard* otherPoint) {
+        GameBoard other = *otherPoint;
+        CopyOver(other);
+        return *this; // Return *this to allow chained assignments
+    }
+
+    // Overload subscript operator for non-const objects
+    int& operator[](size_t index) {
+        if (index >= 5) {
+            throw std::out_of_range("Index out of bounds");
+        }
+        return board[index];
+    }
+
+    void CopyBoardTo(int arr[5]){
+        for (int i = 0; i < 5; i++) {arr[i] = board[i];}
+        return;
+    }
+    
+    void UpdateKeys(bool isEven){
+        //handles key generation
+        key = GetKey(board,isEven);
+        conjugateKey = GetKey(board,!isEven);
+        // cheecks if its a terminal gamestate
+        isEnd = ((key == WIN_KEY_EVEN) || (key == WIN_KEY_ODD));  
+    }
 
 
 
-vector<shared_ptr<GameState> > initUnique(vector<shared_ptr<GameState> >& );
-void prune(shared_ptr<GameState> target);
+    private:
+    int convertToBase11(int num);
+
+    int GetKey(int board[5],bool isEven){
+        //convert the board values into digits of a 6 digit long int
+        int a = (board[0]*1000000)+(board[1]*100000)+(board[2]*10000)+(board[3]*1000)+(board[4]*100)+(board[5]*10)+isEven;
+        //convert to base 11
+        a = convertToBase11(a);
+        return a;
+    };
+
+    // Function to convert a decimal number to base 11 
+    int convertToBase11(int num) {
+        if (num == 0) return 0;  // Special case for 0
+
+        int base11 = 0;
+        int placeValue = 1; // Represents the positional multiplier (1, 10, 100, etc.)
+
+        while (num > 0) {
+            int remainder = num % 11; // Get the remainder
+            base11 += remainder * placeValue; // Construct the base 11 integer
+            placeValue *= 10; // Move to the next place value
+            num /= 11; // Reduce the number
+        }
+
+        return base11;
+    }
+
+    void CopyOver(const GameBoard& other){
+            if (this != &other) { // Check for self-assignment
+            for (int i = 0; i < 5; i++) {
+                board[i] = other.board[i];
+            }
+            key = other.key;
+            isEnd = other.isEnd;
+            conjugateKey = other.conjugateKey;
+        }
+    }
 
 
+};
 
 
+class GameState{
+    private:
+
+    
+    bool isEven;
+    int  Win; //0 undecided , 1 P1 , -1 P2
+    long long progressData[2]{0,0}; // [0] = uniques found; [1] = total nodes processed
+    GameBoard board;
+    vector<GameState*> children;
+    vector<GameState*> parents;
 
 
-struct GameStateHash {
-  size_t operator()(const GameState& game) const {
-      // Sort the board to treat permutations of numbers as equivalent
-      array<int, 5> sortedBoard = game.board;
-      std::sort(sortedBoard.begin(), sortedBoard.end());
-      // Generate a hash
-      size_t hash = 0;
-      hash = (sortedBoard[0]*1000000)+(sortedBoard[1]*100000)+(sortedBoard[2]*10000)+(sortedBoard[3]*1000)+(sortedBoard[4]*100)+(sortedBoard[5]*10)+game.isEven;
-      return hash;
-  }
+    public: // public
+
+    GameState(GameBoard board, bool isEven,GameState* uniqueNodes[84829],GameState* parent, long long progressData[2]){
+        this->board = board;
+        this->isEven = isEven;
+        this->progressData[0] = progressData[0];
+        this->progressData[1] = progressData[1];
+        this->parents.push_back(parent);
+        if(!board.isEnd){SpawnChildren(this->board, !isEven, uniqueNodes);};
+    };
+
+    GameState& operator=(const GameState& other) {
+        if(children.size() == 0){return *this;}// Base case:  return *this to allow chained assignments
+         this->board  = other.board;
+         this->isEven = other.isEven;
+         this->children.clear();
+        for (size_t i = 0; i < other.children.size(); i++)
+        {
+            this->children.at(i) = other.children.at(i);
+        }
+    };
+
+    void ProgressVisual(){
+        int progressinterval = 1000;
+        int numUniquesDescovered = progressData[0];
+        long long totalNodesProcessed = progressData[1];
+
+            // Periodic progress update every progressInterval nodes
+        if (totalNodesProcessed % progressinterval == 0) {
+            double progressPercent = (static_cast<double>(totalNodesProcessed) / 1010101000) * 100;
+            int barWidth = 75;
+            int pos = static_cast<int>(barWidth * progressPercent / 100);
+
+            // Display the progress bar
+            cout << "\nProgress: [";
+            for (int i = 0; i < barWidth; ++i) {
+                if (i < pos) cout << "=";
+                else cout << " ";
+            }
+            cout << "] " << setw(8) << progressPercent ;
+            cout << "%, Nodes Processed: " << totalNodesProcessed;
+        }
+        return;
+    };
+
+    void SpawnChildren(GameBoard board,bool isEven,GameState* uniqueNodes[84829]){
+        GameState* newborn;
+        int proposedBoard[5];
+        if (board.isEnd) {
+            for (int j = 0; j < 5; j++) { // each row in the game
+                for (int k = 0; k < board[j]; k++) { 
+                    // simulates a turn of the game to generate permutations
+                    board.CopyBoardTo(proposedBoard);
+                    proposedBoard[j] = k;
+
+                        // logic for each generated board
+                        GameBoard child(proposedBoard,isEven);
+                        switch (IsUnique(child,uniqueNodes))
+                        {
+                        case 0: // not found in unique list
+                            newborn = new GameState(child,isEven,uniqueNodes,this,progressData);// make new gamestate
+                            children.push_back(newborn);// add it to the vector of children
+                            uniqueNodes[child.key] = newborn;// add it to children and too the unique list
+                            delete newborn;// release the memory
+                            progressData[0]++;// update number of uniques found for progress tracking reasons
+                            break;
+                        case 1: // already has a conjugate
+                            // coppy the existing conjugate and change its isEven status
+                            newborn = uniqueNodes[child.conjugateKey]; // copy over the data from the already existing one
+                            newborn->isEven = !isEven; //invert its isEven
+                            newborn->UpdateKeys();// update its keys
+
+                            uniqueNodes[child.conjugateKey] = newborn; // add it to the list of uniques
+                            newborn->parents.push_back(this); // add this as a parent of the new child
+                            children.push_back(newborn);
+                            
+                            break;
+                        case 2: // has been seen
+                            uniqueNodes[child.key]->parents.push_back(this); // add this node as one of its parents
+                            children.push_back(uniqueNodes[child.key]);// add it to the list of children
+                            break;
+                        }
+                }
+            }
+            progressData[1]++;
+            ProgressVisual();
+        }
+    };
+
+    int IsUnique(GameBoard board,GameState* uniqueNodes[84829]){
+        if ( uniqueNodes[board.key] != nullptr){return 2;} // found
+        else if (uniqueNodes[board.conjugateKey] != nullptr){return 1;} // conjucate found but not itself
+        else {return 0;} // not found
+    };
+
+    void UpdateKeys(){ // used to update the keys after copying over data
+        this->board.UpdateKeys(isEven);return;
+    }
+
+    void Delete(){
+        // recursive step
+        for (size_t i = 0; i < this->children.size(); i++){this->children.at(i)->Delete();}// if children loop though and delete
+        // base case
+        if (this->board.isEnd||(this->children.size() == 0)){// if it has no children or if its an end state
+            for (size_t i = 0; i < this->parents.size(); i++){//for each parent
+                for (size_t j = 0; j < this->parents.at(i)->children.size(); j++){
+                    //find this element in parents' children vector 
+                    if (this->parents.at(i)->children.at(j)->board.key = this->board.key){
+                        delete this->parents.at(i)->children[j];// delete self
+                        this->parents.at(i)->children.erase(this->parents.at(i)->children.begin() + j);// erase from vector
+            }}}
+            // clear out parents
+            for (size_t i = 0; i < this->parents.size(); i++)
+            {
+                delete this->parents[i];
+            }
+            this->parents.clear();
+            return;
+        };
+    }
+
+    ~GameState(){//release the memory!!
+        Delete();
+    }
+};
+
+
+int main(){
+
+        GameState* UniqueNodes[84829] {nullptr};
+        GameState* winState;
+        GameState* bestMove;
+        GameState* root;
+
+
+        
+
+
+    return 0;
 };
 
 
@@ -45,305 +271,5 @@ struct GameStateHash {
 
 
 
-
-
-struct GameStateEqual {
-  bool operator()(const GameState& lhs, const GameState& rhs) const {
-      return lhs.board == rhs.board && lhs.isEven == rhs.isEven;
-  }
-};
-
-
-
-
-
-
-void expandGameStates(vector<shared_ptr<GameState>>& initialStates,
-                     vector<shared_ptr<GameState>>& winStates,
-                     unordered_map<shared_ptr<GameState>, shared_ptr<GameState>, GameStateHash, GameStateEqual>& uniqueStates);
-
-
-
-
-struct GameState : enable_shared_from_this<GameState> {
-   array<int, 5> board;
-   bool isEven;
-   int win;
-   bool end;
-   bool childrenGenerated;
-   vector<weak_ptr<GameState> > parent;
-   vector<shared_ptr<GameState> > children;
-
-
-   GameState(const int* boardArr, bool isEven, vector<weak_ptr<GameState> > parent,
-           vector<shared_ptr<GameState>>& winStates)
-       : board{boardArr[0], boardArr[1], boardArr[2], boardArr[3], boardArr[4]},
-       isEven(isEven), parent(parent), childrenGenerated(false), end(false) {
-       sort(board.begin(), board.end());
-       getWin(winStates);
-   }
-
-
-   shared_ptr<GameState> isEnd(const vector<shared_ptr<GameState> >& winStates) {
-       for (int i = 0; i < winStates.size(); ++i) {
-           const auto& winState = winStates[i];
-           if (board == winState->board) {
-               end = true;
-               return winState;
-           }
-       }
-       end = false;
-       return nullptr;
-   }
-
-
-   shared_ptr<GameState> copyNode(const shared_ptr<GameState>& toCopy,
-                                  vector<shared_ptr<GameState> >& winStates) {
-       int copiedBoard[5];
-       for (int i = 0; i < 5; ++i) {
-           copiedBoard[i] = toCopy->board[i];
-       }
-       return make_shared<GameState>(copiedBoard, !isEven, shared_from_this(), winStates);
-   }
-
-
-  
-   void SpawnChildren(vector<shared_ptr<GameState>>& winStates,
-                   unordered_map<shared_ptr<GameState>, shared_ptr<GameState>, GameStateHash, GameStateEqual>& uniqueStates) {
-       int updatedBoard[5];
-       shared_ptr<GameState> tempChild;
-
-
-       if (!this->isEnd(winStates)) {
-           for (int j = 0; j < 5; j++) {
-               for (int k = 0; k < board[j]; k++) {
-                   // Copy the current board state into `updatedBoard`
-                   std::copy(std::begin(this->board), std::end(this->board), std::begin(updatedBoard));
-                   updatedBoard[j] = k;
-
-
-                   // Create a potential child GameState with updated board and flipped `isEven`
-                   auto potentialChild = make_shared<GameState>(updatedBoard, !isEven, shared_from_this(), winStates);
-
-
-                   // Insert only if not already in uniqueStates
-                   if (uniqueStates.find(potentialChild) == uniqueStates.end()) {
-                       uniqueStates[potentialChild] = potentialChild; // Use GameState as both key and value
-                       children.push_back(potentialChild);
-                   } else {
-                       // If it exists, retrieve the existing GameState
-                       tempChild = uniqueStates[potentialChild];
-                       children.push_back(tempChild);
-                       tempChild->parent.push_back(shared_from_this());
-                   }
-               }
-           }
-       }
-       childrenGenerated = true;
-   }
-
-
-
-
-   void getWin(vector<shared_ptr<GameState> >& winStates) {
-       win = isEven ? -1 : 1;
-       if (!isEnd(winStates)) {
-           win = 0;
-       }
-   }
-};
-
-
-void prune(shared_ptr<GameState> target) {
-   if (!target->children.empty()) {
-       target->win = target->children.at(0)->win;
-   }
-   target->end = true;
-   target->children.clear();
-}
-
-
-vector<shared_ptr<GameState> > initUnique(vector<shared_ptr<GameState> >& winStates) {
-   string uniqueString = "0,0,0,0,1#0,0,0,0,2";
-   vector<shared_ptr<GameState>> initialStates;
-
-
-   unordered_map<shared_ptr<GameState>, shared_ptr<GameState>, GameStateHash, GameStateEqual> uniqueStates;
-   stringstream ss(uniqueString);
-   string boardStr;
-
-
-   // Parse the string into separate board states
-   while (getline(ss, boardStr, '#')) {
-       int board[5] = {0};
-       stringstream boardStream(boardStr);
-       string num;
-       int i = 0;
-
-
-       // Convert board string to integer array
-       while (getline(boardStream, num, ',') && i < 5) {
-           board[i++] = stoi(num);
-       }
-
-
-       // Create a GameState instance
-       auto gameState = make_shared<GameState>(board, /*isEven=*/false, vector<weak_ptr<GameState>>{}, winStates);
-
-
-       // Insert only if this game state is unique
-       if (uniqueStates.find(gameState) == uniqueStates.end()) {
-           uniqueStates[gameState] = gameState;
-           initialStates.push_back(gameState);
-       }
-   }
-
-
-   // Use expandGameStates to handle the iterative child generation
-   expandGameStates(initialStates, winStates, uniqueStates);
-
-
-   return initialStates;
-}
-
-
-void expandGameStates(vector<shared_ptr<GameState>>& initialStates,
-                     vector<shared_ptr<GameState>>& winStates,
-                     unordered_map<shared_ptr<GameState>, shared_ptr<GameState>, GameStateHash, GameStateEqual>& uniqueStates) {
-   long long nodeCount = 0;
-   long long estimatedTotalNodes = 1010101000;
-   int progressInterval = 3000;
-   vector<shared_ptr<GameState>> stack = initialStates;
-
-
-   while (!stack.empty()) {
-       auto current = stack.back();
-       stack.pop_back();
-
-
-       nodeCount++;
-
-
-       // Display progress bar
-       if (nodeCount % progressInterval == 0) {
-           double progressPercent = (static_cast<double>(nodeCount) / estimatedTotalNodes) * 100;
-           int barWidth = 75;
-           int pos = static_cast<int>(barWidth * progressPercent / 100);
-
-
-           cout << "\nProgress: [";
-           for (int i = 0; i < barWidth; ++i) {
-               cout << (i < pos ? "=" : " ");
-           }
-           cout << "] " << setw(8) << progressPercent << "%, Nodes Processed: " << nodeCount;
-       }
-
-
-       // Process current state
-       if (!current->isEnd(winStates)) {
-           current->SpawnChildren(winStates, uniqueStates);
-           for (auto& child : current->children) {
-               stack.push_back(child);
-           }
-       }
-   }
-
-
-   cout << "\nTotal Nodes Processed: " << nodeCount << endl;
-};
-
-
-// Utility function to format the board as a string for CSV output
-string formatBoard(const array<int, 5>& board) {
-   stringstream ss;
-   for (int i = 0; i < 5; ++i) {
-       ss << board[i];
-       if (i < 4) ss << ",";
-   }
-   return ss.str();
-}
-
-
-
-
-void writeGameStateToCSV(ofstream& file, shared_ptr<GameState> gameState,
-                        unordered_map<shared_ptr<GameState>, int>& stateToIdMap, int& idCounter, int parentId = -1) {
-   // Assign an ID to the current GameState if it doesn't have one yet
-   if (stateToIdMap.find(gameState) == stateToIdMap.end()) {
-       stateToIdMap[gameState] = idCounter++;
-   }
-  
-   int currentId = stateToIdMap[gameState];
-  
-   // Write the current GameState to the CSV file
-   file << currentId << ","
-        << parentId << ","
-        << "\"" << formatBoard(gameState->board) << "\","
-        << (gameState->end ? "true" : "false") << "\n";
-  
-   // Recursively write each child
-   for (const auto& child : gameState->children) {
-       writeGameStateToCSV(file, child, stateToIdMap, idCounter, currentId);
-   }
-}
-
-
-// Correct declaration in exportTreeToCSV function
-void exportTreeToCSV(const string& filename, shared_ptr<GameState> root) {
-   ofstream file(filename);
-   if (!file.is_open()) {
-       cerr << "Error: Could not open file " << filename << " for writing." << endl;
-       return;
-   }
-
-
-   // Write CSV header
-   file << "ID,ParentID,Board,IsEnd\n";
-
-
-   // Use unordered_map to store IDs for each unique GameState and initialize ID counter
-   unordered_map<shared_ptr<GameState>, int> stateToIdMap; // Fixed unordered_map usage
-   int idCounter = 1;
-
-
-   // Start the recursive export with the root GameState
-   writeGameStateToCSV(file, root, stateToIdMap, idCounter);
-
-
-   file.close();
-   cout << "Tree successfully exported to " << filename << endl;
-}
-
-
-int main() {
-   cout << "\n----START----\n";
-
-
-
-
-   int initialBoard[5] = {1, 2, 3, 4, 5};
-   int basicWin[5] = {0, 0, 0, 0, 0};
-   vector<shared_ptr<GameState> > winStates;
-   unordered_map<shared_ptr<GameState>, shared_ptr<GameState>, GameStateHash, GameStateEqual> uniqueStates;
-
-
-   auto baseWin = make_shared<GameState>(basicWin, false, nullptr, winStates);
-   winStates.push_back(baseWin);
-
-
-   auto root = make_shared<GameState>(initialBoard, false, nullptr, winStates);
-
-
-   // Use expandGameStates function
-   vector<shared_ptr<GameState> > initialStates;
-   initialStates.push_back(root);
-   expandGameStates(initialStates, winStates, uniqueStates);
-
-
-   cout << "\n----- END";
-
-
-   return 0;
-}
 
 
