@@ -10,45 +10,10 @@
 #include <unordered_set>
 #include <array>
 #include <algorithm>
+#include <unordered_map>
 
 
 using namespace std;
-
-
-
-
-
-
-// Custom hash function for arrays of size 5
-struct GameStateHash {
-   size_t operator()(const array<int, 5>& board) const {
-       // Sort the board to treat permutations of numbers as equivalent
-       array<int, 5> sortedBoard = board;
-       std::sort(sortedBoard.begin(), sortedBoard.end());
-
-
-       // Generate a hash
-       size_t hash = 0;
-       for (int num : sortedBoard) {
-           hash ^= std::hash<int>()(num) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-       }
-       return hash;
-   }
-};
-
-
-// Custom equality comparison for arrays of size 5
-struct GameStateEqual {
-   bool operator()(const array<int, 5>& a, const array<int, 5>& b) const {
-       array<int, 5> sortedA = a;
-       array<int, 5> sortedB = b;
-       std::sort(sortedA.begin(), sortedA.end());
-       std::sort(sortedB.begin(), sortedB.end());
-       return sortedA == sortedB;
-   }
-};
-
-
 
 
 struct GameState;
@@ -56,27 +21,53 @@ struct GameState;
 
 void expandGameStates(vector<shared_ptr<GameState> >& initialStates,
                      vector<shared_ptr<GameState> >& winStates,
-                     unordered_set<array<int, 5>, GameStateHash, GameStateEqual>& uniqueStates);
+                     unordered_set<array<int, 5>, ArrayHash, ArrayEqual>& uniqueStates);
 
 
 vector<shared_ptr<GameState> > initUnique(vector<shared_ptr<GameState> >& winStates);
 void prune(shared_ptr<GameState> target);
 
 
+
+
+struct ArrayHash {
+   std::size_t operator()(const std::array<int, 5>& arr) const {
+       std::size_t hash = 0;
+       for (int num : arr) {
+           hash ^= std::hash<int>()(num) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+       }
+       return hash;
+   }
+};
+
+
+struct ArrayEqual {
+   bool operator()(const std::array<int, 5>& lhs, const std::array<int, 5>& rhs) const {
+       return lhs == rhs;
+   }
+};
+
+
+
+
+
+
+
+
 struct GameState : enable_shared_from_this<GameState> {
    array<int, 5> board;
-   bool isEvenTurn;
+   bool isEven;
    int win;
    bool end;
    bool childrenGenerated;
-   weak_ptr<GameState> parent;
+   vector<weak_ptr<GameState> > parent;
    vector<shared_ptr<GameState> > children;
 
 
-   GameState(int boardArr[5], bool isEvenTurn, shared_ptr<GameState> parent,
-             vector<shared_ptr<GameState> >& winStates)
-       : isEvenTurn(isEvenTurn), parent(parent), childrenGenerated(false), end(false) {
-       copy(boardArr, boardArr + 5, board.begin());
+   GameState(const int* boardArr, bool isEven, vector<weak_ptr<GameState> > parent,
+           vector<shared_ptr<GameState>>& winStates)
+       : board{boardArr[0], boardArr[1], boardArr[2], boardArr[3], boardArr[4]},
+       isEven(isEven), parent(parent), childrenGenerated(false), end(false) {
        sort(board.begin(), board.end());
        getWin(winStates);
    }
@@ -101,22 +92,22 @@ struct GameState : enable_shared_from_this<GameState> {
        for (int i = 0; i < 5; ++i) {
            copiedBoard[i] = toCopy->board[i];
        }
-       return make_shared<GameState>(copiedBoard, !isEvenTurn, shared_from_this(), winStates);
+       return make_shared<GameState>(copiedBoard, !isEven, shared_from_this(), winStates);
    }
 
 
-   void SpawnChildren(vector<shared_ptr<GameState> >& winStates,
-                             unordered_set<array<int, 5>, GameStateHash>& uniqueStates) {
+  
+void SpawnChildren(vector<shared_ptr<GameState>>& winStates,
+                  unordered_map<array<int, 5>, shared_ptr<GameState>, ArrayHash, ArrayEqual>& uniqueStates) {
    int updatedBoard[5];
-   shared_ptr<GameState> tempChild, returnedNode;
+   shared_ptr<GameState> tempChild;
 
 
    if (!this->isEnd(winStates)) {
        for (int j = 0; j < 5; j++) {
            for (int k = 0; k < board[j]; k++) {
-               for (int i = 0; i < 5; ++i) {
-                   updatedBoard[i] = this->board[i];
-               }
+               // Copy the current board state into `updatedBoard`
+               std::copy(std::begin(this->board), std::end(this->board), std::begin(updatedBoard));
                updatedBoard[j] = k;
 
 
@@ -125,15 +116,18 @@ struct GameState : enable_shared_from_this<GameState> {
                std::copy(std::begin(updatedBoard), std::end(updatedBoard), boardArray.begin());
 
 
-               // Check if this state is already in uniqueStates
+               // Check if this state already exists with the opposite isEven value
                if (uniqueStates.find(boardArray) == uniqueStates.end()) {
-                   // If unique, add to uniqueStates
-                   uniqueStates.insert(boardArray);
-
-
-                   // Create a new GameState
-                   tempChild = make_shared<GameState>(updatedBoard, !isEvenTurn, shared_from_this(), winStates);
+                   // If unique, create a new GameState
+                   auto potentialChild = make_shared<GameState>(updatedBoard, !isEven, shared_from_this(), winStates);
+                   uniqueStates[boardArray] = potentialChild;
+                   children.push_back(potentialChild);
+               } else {
+                   // Reuse the existing GameState if it exists
+                   tempChild = uniqueStates[boardArray];
                    children.push_back(tempChild);
+                   //add this node as one of its parents
+                   tempChild.get()->parent.push_back(shared_from_this());
                }
            }
        }
@@ -142,10 +136,8 @@ struct GameState : enable_shared_from_this<GameState> {
 }
 
 
-
-
    void getWin(vector<shared_ptr<GameState> >& winStates) {
-       win = isEvenTurn ? -1 : 1;
+       win = isEven ? -1 : 1;
        if (!isEnd(winStates)) {
            win = 0;
        }
@@ -163,11 +155,11 @@ void prune(shared_ptr<GameState> target) {
 
 
 vector<shared_ptr<GameState> > initUnique(vector<shared_ptr<GameState> >& winStates) {
-   string uniqueString = "0,0,0,0,1#0,0,0,0,2#0,0,0,1,1#0,0,0,0,3#0,0,0,1,2#0,0,1,1,1#0,0,0,0,4#0,0,0,1,3#0,0,0,2,2#0,0,1,1,2#0,1,1,1,1#0,0,0,0,5#0,0,0,1,4#0,0,0,2,3#0,0,1,1,3#0,0,1,2,2#0,1,1,1,2#1,1,1,1,1#0,0,0,1,5#0,0,0,2,4#0,0,0,3,3#0,0,1,1,4#0,0,1,2,3#0,0,2,2,2#0,1,1,1,3#0,1,1,2,2#1,1,1,1,2#0,0,0,2,5#0,0,0,3,4#0,0,1,1,5#0,0,1,2,4#0,0,1,3,3#0,0,2,2,3#0,1,1,1,4#0,1,1,2,3#0,1,2,2,2#1,1,1,1,3#1,1,1,2,2#0,0,0,3,5#0,0,0,4,4#0,0,1,2,5#0,0,1,3,4#0,0,2,2,4#0,0,2,3,3#0,1,1,1,5#0,1,1,2,4#0,1,1,3,3#0,1,2,2,3#0,2,2,2,2#1,1,1,1,4#1,1,1,2,3#1,1,2,2,2#0,0,0,4,5#0,0,1,3,5#0,0,1,4,4#0,0,2,2,5#0,0,2,3,4#0,0,3,3,3#0,1,1,2,5#0,1,1,3,4#0,1,2,2,4#0,1,2,3,3#0,2,2,2,3#1,1,1,1,5#1,1,1,2,4#1,1,1,3,3#1,1,2,2,3#1,2,2,2,2#0,0,1,4,5";
+   string uniqueString = "0,0,0,0,1#0,0,0,0,2#0,0,0,1,1#0,0,0,0,3";
    vector<shared_ptr<GameState> > initialStates;
 
 
-   unordered_set<array<int, 5>, GameStateHash, GameStateEqual> uniqueStates;
+   unordered_set<array<int, 5>, ArrayHash, ArrayEqual> uniqueStates;
    stringstream ss(uniqueString);
    string boardStr;
 
@@ -197,7 +189,7 @@ vector<shared_ptr<GameState> > initUnique(vector<shared_ptr<GameState> >& winSta
 
 
            // Create a GameState instance and add it to initialStates
-           auto gameState = make_shared<GameState>(board, /*isEvenTurn=*/false, nullptr, winStates);
+           auto gameState = make_shared<GameState>(board, /*isEven=*/false, nullptr, winStates);
            initialStates.push_back(gameState);
        }
    }
@@ -211,13 +203,13 @@ vector<shared_ptr<GameState> > initUnique(vector<shared_ptr<GameState> >& winSta
 }
 
 
-void expandGameStates(vector<shared_ptr<GameState> >& initialStates,
-                     vector<shared_ptr<GameState> >& winStates,
-                     unordered_set<array<int, 5>, GameStateHash>& uniqueStates) {
+void expandGameStates(vector<shared_ptr<GameState>>& initialStates,
+                     vector<shared_ptr<GameState>>& winStates,
+                     unordered_map<array<int, 5>, shared_ptr<GameState>, ArrayHash, ArrayEqual>& uniqueStates) {
    long long nodeCount = 0;
    long long estimatedTotalNodes = 1010101000;
    int progressInterval = 3000;
-   vector<shared_ptr<GameState> > stack = initialStates;
+   vector<shared_ptr<GameState>> stack = initialStates;
 
 
    while (!stack.empty()) {
@@ -257,25 +249,78 @@ void expandGameStates(vector<shared_ptr<GameState> >& initialStates,
 }
 
 
+// Utility function to format the board as a string for CSV output
+string formatBoard(const array<int, 5>& board) {
+   stringstream ss;
+   for (int i = 0; i < 5; ++i) {
+       ss << board[i];
+       if (i < 4) ss << ",";
+   }
+   return ss.str();
+}
+#include <unordered_map> // Include this to use unordered_map
 
 
+// Replace `unordered_set` with `unordered_map` in the parameter and variable declarations
+void writeGameStateToCSV(ofstream& file, shared_ptr<GameState> gameState,
+                        unordered_map<shared_ptr<GameState>, int>& stateToIdMap, int& idCounter, int parentId = -1) {
+   // Assign an ID to the current GameState if it doesn't have one yet
+   if (stateToIdMap.find(gameState) == stateToIdMap.end()) {
+       stateToIdMap[gameState] = idCounter++;
+   }
+  
+   int currentId = stateToIdMap[gameState];
+  
+   // Write the current GameState to the CSV file
+   file << currentId << ","
+        << parentId << ","
+        << "\"" << formatBoard(gameState->board) << "\","
+        << (gameState->end ? "true" : "false") << "\n";
+  
+   // Recursively write each child
+   for (const auto& child : gameState->children) {
+       writeGameStateToCSV(file, child, stateToIdMap, idCounter, currentId);
+   }
+}
 
 
+// Correct declaration in exportTreeToCSV function
+void exportTreeToCSV(const string& filename, shared_ptr<GameState> root) {
+   ofstream file(filename);
+   if (!file.is_open()) {
+       cerr << "Error: Could not open file " << filename << " for writing." << endl;
+       return;
+   }
+
+
+   // Write CSV header
+   file << "ID,ParentID,Board,IsEnd\n";
+
+
+   // Use unordered_map to store IDs for each unique GameState and initialize ID counter
+   unordered_map<shared_ptr<GameState>, int> stateToIdMap; // Fixed unordered_map usage
+   int idCounter = 1;
+
+
+   // Start the recursive export with the root GameState
+   writeGameStateToCSV(file, root, stateToIdMap, idCounter);
+
+
+   file.close();
+   cout << "Tree successfully exported to " << filename << endl;
+}
 
 
 int main() {
    cout << "\n----START----\n";
-   fstream file("gamestates.txt", ios::out);
-   if (!file) {
-       cerr << "Error opening file!" << endl;
-       return 1;
-   }
+
+
 
 
    int initialBoard[5] = {1, 2, 3, 4, 5};
    int basicWin[5] = {0, 0, 0, 0, 0};
    vector<shared_ptr<GameState> > winStates;
-   unordered_set<array<int, 5>, GameStateHash> uniqueStates;
+   unordered_set<array<int, 5>, ArrayHash, ArrayEqual> uniqueStates;
 
 
    auto baseWin = make_shared<GameState>(basicWin, false, nullptr, winStates);
@@ -292,6 +337,8 @@ int main() {
 
 
    cout << "\n----- END";
-   file.close();
+
+
+   exportTreeToCSV("game_tree.csv", root);
    return 0;
 }
