@@ -17,7 +17,7 @@ using namespace std;
 
 
  const int END_KEY = 0;
- const int TABLE_SIZE = 1865;
+ const int TABLE_SIZE = 1865+1;
  const int PROGRESS_INTERVAL = 10;
  const int BAR_WIDTH = 75;
  const int BAR_WIDTH2 = 75; 
