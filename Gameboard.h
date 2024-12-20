@@ -8,19 +8,21 @@ struct GameBoard
     int  board[5];
     int  key;
     int  display;
-    bool isBegining;
+    bool isEnd;
 
-    GameBoard() : board{0, 0, 0, 0, 0}, key(0), isBegining(false) {};
+    GameBoard() : board{0, 0, 0, 0, 0}, key(0), isEnd(false) {};
 
     GameBoard(int inBoard[5]){
+        
         //coppy in board
         for (int i = 0; i < 5; i++){board[i] = inBoard[i];}
+        sort(begin(board),end(board));//sort board
+        
 
-        sort(board, board + 5);//sort board
         //handles key generation
-        key = GetKey(inBoard);
+        key = GetKey(board);
         // cheecks if its a terminal gamestate
-        isBegining = (key == START_KEY);   
+        isEnd = (key == END_KEY);   
     }
 
     GameBoard& operator=(const GameBoard& other) {
@@ -78,7 +80,7 @@ struct GameBoard
     int GetKey(int board[5]){
         //convert the board values into digits of a 6 digit long int
         int a = (board[0]*10000)+(board[1]*1000)+(board[2]*100)+(board[3]*10)+(board[4]);
-        this->display = a;
+        display = a;
         //convert to base 11
         a = convertToBase13(a);
         if(key > TABLE_SIZE){cout<<"\n\n\n\n\n\n\n\n KEY TOO BIG " << key << "  "; for (size_t i = 0; i < 5; i++){cout << board[i] << ",";}};
@@ -92,7 +94,7 @@ struct GameBoard
             }
             display = other.display;
             key = other.key;
-            isBegining = other.isBegining;
+            isEnd = other.isEnd;
         }
     }
 

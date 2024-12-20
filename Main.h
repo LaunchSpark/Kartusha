@@ -9,13 +9,19 @@
 #include <sstream>
 #include <iomanip>
 #include <fstream>
+#include <memory>
 
 using namespace std;
 
 
 
- const int START_KEY = 5808;
+ const int END_KEY = 00000;
  const int TABLE_SIZE = 84829+1;
+ const int PROGRESS_INTERVAL = 10;
+ const int BAR_WIDTH = 75;
+ const int BAR_WIDTH2 = 75; 
+  
+
   //const int TABLE_SIZE = 623350;
 
 

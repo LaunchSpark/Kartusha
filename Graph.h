@@ -6,32 +6,35 @@
         array<shared_ptr<GameState>, TABLE_SIZE> nodes{nullptr};
         long long progressData[2]; // [0] = uniques found; [1] = total nodes processed
         int startingBoard[5];
+        int progressinterval;
+        int barWidth;
+        int barWidth2;
+        double progressPercent;
+        double progressPercent2;
+        int pos;
+        int pos2;
 
         Memo(){ 
             nodes.fill(nullptr);
-            progressData[0] = 1;
-            progressData[1] = 0;
+            progressData[0] = 1;//unique nodes
+            progressData[1] = 0;//total nodes
+            progressinterval = PROGRESS_INTERVAL;//sets progress interval
+            barWidth = BAR_WIDTH;
+            barWidth2 = BAR_WIDTH2;
         };
 
         void SetStartingBoard(int starting[5]){
             for (size_t i = 0; i <5; i++){startingBoard[i] = starting[i];};
         };
 
-        void ProgressVisual(long long progressData[2]){
-         
-            int progressinterval = 1000;
-            int numUniquesDescovered = progressData[0];
-            long long totalNodesProcessed = progressData[1];
-            int barWidth = 75;
-            int barWidth2 = 75;
-
+        void ProgressVisual(){
                 // Periodic progress update every progressInterval nodes
-            if (totalNodesProcessed % progressinterval == 0) {
-                cout << "\x1b[1F\x1b[2K"; // clear the last progress bar if not the root
-                double progressPercent = (static_cast<double>(totalNodesProcessed) / 1010101000) * 100;
-                double progressPercent2 = (static_cast<double>(numUniquesDescovered) / 262) * 100;
-                int pos = static_cast<int>(barWidth * progressPercent / 100);
-                int pos2 = static_cast<int>(barWidth2 * progressPercent2 / 100);
+            if (progressData[1] % progressinterval == 0) {
+                if (progressData[1] > 2){ cout << "\x1b[1F\x1b[2K";}; // clear the last progress bar if not the root
+                progressPercent = (static_cast<double>(progressData[1]) / 1010101000) * 100;
+                progressPercent2 = (static_cast<double>(progressData[0]) / 130) * 100;
+                pos = static_cast<int>(barWidth * progressPercent / 100);
+                pos2 = static_cast<int>(barWidth2 * progressPercent2 / 100);
 
                 // Display the progress bar
                 cout << "Progress:  [";
@@ -40,7 +43,7 @@
                     else cout << " ";
                 }
                 cout << "] " << setw(8) << progressPercent ;
-                cout << "%, Nodes Processed: " << totalNodesProcessed;
+                cout << "%, Nodes Processed: " << progressData[1];
 
                 cout << "\nUniques:   [";
                 for (int i = 0; i < barWidth2; ++i) {
@@ -48,7 +51,7 @@
                     else cout << " ";
                 }
                 cout << "] " << setw(8) << progressPercent2;
-                cout << "%, Found: " << numUniquesDescovered;
+                cout << "%, Found: " << progressData[0];
             }
             return;
         };
@@ -60,81 +63,95 @@
        
         void insert(shared_ptr<GameState> newUnique){
             nodes[newUnique->GetBoard().key] = newUnique;
+            progressData[0]++;
         }
 
-        ~Memo();
+        void printUniques(){
+            int j = 0;
+            for (size_t i = 0; i < TABLE_SIZE; i++)
+            {
+                if (nodes[i] != nullptr)
+                {
+                    cout << nodes[i].get()->GetBoard().board[0] << ",";  
+                    cout << nodes[i].get()->GetBoard().board[1] << ","; 
+                    cout << nodes[i].get()->GetBoard().board[2] << ","; 
+                    cout << nodes[i].get()->GetBoard().board[3] << ","; 
+                    cout << nodes[i].get()->GetBoard().board[4] << "; ";
+                    cout << nodes[i].get()->GetBoard().key << "\n";
+                    j++;
+                }
+            }
+            cout << "\n" << j;
+        }
+        ~Memo(){};
     };
 
     class Graph {
         public:
-        int startingBoard[5]{0};
+        int startingBoard[5];
         Memo memo;
         GameBoard rootBoard;
         shared_ptr<GameState> root;
 
         Graph(){
+         for (int i = 0; i < 5; i++) {startingBoard[i] = i+1;}; // sets starting board to 1,2,3,4,5
          memo.SetStartingBoard(startingBoard);
-         GameBoard rootBoard(startingBoard);
-         root = make_shared<GameState>(rootBoard, true);
+         GameBoard temp(startingBoard);
+         rootBoard = temp;
+         root = make_shared<GameState>(rootBoard);
          memo.insert(root);
         };
         
 
-        void expandGameStates(shared_ptr<GameState>node) {
-            GameBoard board = node.get()->GetBoard();
+        void SpawnChildren(shared_ptr<GameState> inState) {
+            
+             int proposedBoard[5];
+             for (int i = 0; i < 5; i++) { proposedBoard[i] = inState.get()->GetBoard()[i];}//reset proposed board
+             memo.ProgressVisual(); //progress visual
+            
+             for (int j = 4; j >= 0; j--) { // j = what slot to look at
+                 for (int i = 0; i < 5; i++) { proposedBoard[i] = inState.get()->GetBoard()[i]; }//reset proposed board
+                 
+                 for (int k = 0; k < inState.get()->GetBoard()[j]; k++) { // k = what to reduce it to 
+                     proposedBoard[j] = k; // reduces the number in the slot to k
+                     GameBoard child(proposedBoard); // makes into a Gameboard object
+                     memo.progressData[1]++;//updates the progress tracking
 
-            if (!board.isBegining) {
-                vector<shared_ptr<GameState>> stack;
-                stack.push_back(node); // Start with the current node
 
-                while (!stack.empty()) {
-                    // Pop the last element (DFS)
-                    auto current = stack.back().get();
-                    stack.pop_back();
+                     if (memo.find(child)) { // returns true if already known
+                         inState.get()->addChild(memo.nodes[child.key]);
+                        
+                     } else {
+                         memo.insert(make_shared<GameState>(child));//make new gameState object and add it to memo
+                         inState.get()->addChild(memo.nodes[child.key]);
+                     }
+                     memo.nodes[child.key].get()->addParent(inState);//add inState to the childs parent list
+                     
+                    
 
 
-                    int curKey = current.get()-> GetBoard().key;
-
-                    // Skip if already processed
-                    if (current.get()->getChildrenGenerated()) {
-                        cout << "\nSkipping node (already generated)";
-                        continue;
-                    }
-
-              
-
-                    // Spawn children if not terminal
-                    if (!current->board.isBegining) {
-                        current->SpawnChildren(current->board, !current->isEven, uniqueNodes, progressData);
-
-                        // Push newly created children to the stack
-                        for (int i = 0; i < current->children.size(); i++) {
-                            auto child = current->children.at(i);
-                            if (child && !child->getChildrenGenerated()) {
-                                stack.push_back(child);
-                                cout << "\nChild added to stack: " << child->board.display;
-                            }
-                        }
-                    }
-
-                    current->childrenGenerated = true;
-
-                    // Optional: Update progress visualization
-                    cout << "\nStack size after processing: " << stack.size();
-                }
-
-                if (stack.empty()) {
-                    cout << "\nStack is empty. Exiting loop.";
-                } else {
-                    cout << "\nUnexpected exit. Stack size: " << stack.size();
-                }
-            } else {
-                cout << "\nTerminal state reached. Exiting.";
-            }
-        }
-
+                     if (!(memo.nodes[child.key].get()->getChildrenGenerated() || child.isEnd)){SpawnChildren(memo.nodes[child.key]);} 
+                     
         
-        ~Graph();
+                    
+                 }
+             }
+
+             for (int i = 0; i < inState.get()->getNumChildren(); i++)
+             {
+                if (!(inState.get()->getChildAt(i).get()->GetBoard().isEnd || inState.get()->getChildAt(i).get()->getChildrenGenerated()) )
+                {
+                    inState.get()->setChildGenerated(false);
+                    return;
+                }
+                
+             }
+             
+             inState.get()->setChildGenerated(true);
+             return; // returns if loops through all children
+        }
+        
+        ~Graph(){};
 
 
     };
