@@ -63,7 +63,7 @@
        
         void insert(shared_ptr<GameState> newUnique){
             nodes[newUnique->GetBoard().key] = newUnique;
-            progressData[0]++;
+            progressData[0] += 1;
         }
 
         void printUniques(){
@@ -108,22 +108,20 @@
              int proposedBoard[5];
              for (int i = 0; i < 5; i++) { proposedBoard[i] = inState.get()->GetBoard()[i];}//reset proposed board
              memo.ProgressVisual(); //progress visual
-            
+             memo.progressData[1]++;//updates the progress tracking
              for (int j = 4; j >= 0; j--) { // j = what slot to look at
-                 for (int i = 0; i < 5; i++) { proposedBoard[i] = inState.get()->GetBoard()[i]; }//reset proposed board
-                 
                  for (int k = 0; k < inState.get()->GetBoard()[j]; k++) { // k = what to reduce it to 
                      proposedBoard[j] = k; // reduces the number in the slot to k
                      GameBoard child(proposedBoard); // makes into a Gameboard object
-                     memo.progressData[1]++;//updates the progress tracking
+                    
 
 
                      if (memo.find(child)) { // returns true if already known
-                         inState.get()->addChild(memo.nodes[child.key]);
-                        
+                         inState.get()->addChild(memo.nodes[child.key]); 
                      } else {
                          memo.insert(make_shared<GameState>(child));//make new gameState object and add it to memo
                          inState.get()->addChild(memo.nodes[child.key]);
+                        
                      }
                      memo.nodes[child.key].get()->addParent(inState);//add inState to the childs parent list
                      
@@ -133,20 +131,10 @@
                      if (!(memo.nodes[child.key].get()->getChildrenGenerated() || child.isEnd)){SpawnChildren(memo.nodes[child.key]);} 
                      
         
-                    
+                     for (int i = 0; i < 5; i++) { proposedBoard[i] = inState.get()->GetBoard()[i]; }//reset proposed board
                  }
              }
 
-             for (int i = 0; i < inState.get()->getNumChildren(); i++)
-             {
-                if (!(inState.get()->getChildAt(i).get()->GetBoard().isEnd || inState.get()->getChildAt(i).get()->getChildrenGenerated()) )
-                {
-                    inState.get()->setChildGenerated(false);
-                    return;
-                }
-                
-             }
-             
              inState.get()->setChildGenerated(true);
              return; // returns if loops through all children
         }

@@ -54,27 +54,25 @@ struct GameBoard
     
     private:
 
-    int convertToBase13(int number) {
-        // Characters used in base 13 representation (0-9, A, B, C)
-        const std::string base13Chars = "0123456789ABC";
+    // Function to convert a base-6 number to base-10
+    int base6ToBase10(int base6Number) {
+        int base10Number = 0;
+        int power = 0;
 
-        // Handle the case where the number is 0
-        if (number == 0) {
-            return 0;
+        while (base6Number > 0) {
+            int digit = base6Number % 10; // Get the last digit
+            base6Number /= 10;           // Remove the last digit
+
+            if (digit >= 6) {
+                cerr << "Invalid digit " << digit << " in base-6 number.\n";
+                return -1; // Indicate error if input is invalid
+            }
+
+            base10Number += digit * static_cast<int>(pow(6, power));
+            ++power;
         }
 
-        // Convert to base 13
-        int result = 0;
-        int multiplier = 1;
-
-        while (number > 0) {
-            int remainder = number % 13;
-            result += remainder * multiplier;
-            multiplier *= 10;
-            number /= 13;
-        }
-
-        return result;
+        return base10Number;
     }
 
     int GetKey(int board[5]){
@@ -82,7 +80,7 @@ struct GameBoard
         int a = (board[0]*10000)+(board[1]*1000)+(board[2]*100)+(board[3]*10)+(board[4]);
         display = a;
         //convert to base 11
-        a = convertToBase13(a);
+        a = base6ToBase10(a);
         if(key > TABLE_SIZE){cout<<"\n\n\n\n\n\n\n\n KEY TOO BIG " << key << "  "; for (size_t i = 0; i < 5; i++){cout << board[i] << ",";}};
         return a;
     };
@@ -97,8 +95,6 @@ struct GameBoard
             isEnd = other.isEnd;
         }
     }
-
-
 };
 
 
